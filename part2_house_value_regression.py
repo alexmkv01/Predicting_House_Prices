@@ -6,14 +6,6 @@ import pandas as pd
 class Regressor():
 
     def __init__(self, x, nb_epoch = 1000):
-        # You can add any input parameters you need
-        # Remember to set them with a default value for LabTS tests
-
-        # Additional columns that we add for categorical feature (ocean proximity)
-        self.one_hot_encoding = None
-        # Constant used for normalising the numerical features.
-        self.normalising_const = None
-
         """ 
         Initialise the model.
           
@@ -25,22 +17,27 @@ class Regressor():
 
         """
 
-        #######################################################################
-        #                       ** START OF YOUR CODE **
-        #######################################################################
+        # You can add any input parameters you need
+        # Remember to set them with a default value for LabTS tests
+
+        # Constants used for normalising the numerical features.
+        self.mean = None
+        self.median = None
+        self.std = None
+        self.columns = None
+        self.mode = None
 
         # Replace this code with your own
         X, _ = self._preprocessor(x, training = True)
+        print(x.head())
+        
         self.input_size = X.shape[1]
         self.output_size = 1
         self.nb_epoch = nb_epoch 
         return
 
-        #######################################################################
-        #                       ** END OF YOUR CODE **
-        #######################################################################
 
-    def _preprocessor(self, x, y = None, training = False):
+    def _preprocessor(self, x, y = None, training = True):
         """ 
         Preprocess input of the network.
           
@@ -58,30 +55,64 @@ class Regressor():
               size (batch_size, 1).
             
         """
-
+        # x consists of training data. Preprocess.
         if training:
-            median_value = x.median()
-            # 1. Fill in missing entries with the column-wise median value for this feature.
-            x = x.fillna(median_value)
 
-            # 2. Perform one-hot encoding to deal with categorical values
+            # Separate Numerical and Categorical Columns.
             x_without_ocean_proximity = x.drop('ocean_proximity', axis=1)
+
+            # Fill missing numerical values with median + normalize
+            self.mean = x_without_ocean_proximity.mean()
+            self.std = x_without_ocean_proximity.std()
+            self.median_values = x_without_ocean_proximity.median()
+
+            x_without_ocean_proximity = x_without_ocean_proximity.fillna(self.median_values)
+            x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
+
+            # Fill missing categorical values with mode 
+            self.mode = x['ocean_proximity'].mode()
+            x['ocean_proximity'].fillna(self.mode)
             one_hot_encoded_ocean_proximities = pd.get_dummies(x['ocean_proximity'])
-            x = pd.concat(x_without_ocean_proximity, one_hot_encoded_ocean_proximities, axis=1)
 
-            # 3. Normalise numerical features
-            x = (x - x.min()) / (x.max() - x.min())
+            # Concatenate one-hot encoded columns and numerical
+            x_new = pd.concat([x_without_ocean_proximity, one_hot_encoded_ocean_proximities], axis=1)
 
+            # Save the column headers (ensuring the test dataset has the same columns)
+            self.columns = list(x_new.columns.values)
+            x_new = x_new[self.columns]
 
-            # Replace this code with your own
-            # Return preprocessed x and y, return None for y if it was None
-            return x, (y if isinstance(y, pd.DataFrame) else None)
+            x = x_new.copy()
 
         else:
-            x = x.fillna(median_value)
-            # Preprocessing test / val data. 
+            
+            # Separate Numerical and Categorical Columns.
+            x_without_ocean_proximity = x.drop('ocean_proximity', axis=1)
 
+            # Fill missing numerical values with median + normalize
+            x_without_ocean_proximity = x_without_ocean_proximity.fillna(self.median_values)
+            x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
 
+            # Fill missing categorical values with mode 
+            x['ocean_proximity'].fillna(self.mode)
+            one_hot_encoded_ocean_proximities = pd.get_dummies(x['ocean_proximity'])
+
+            # Fill missing categorical values with mode 
+            self.mode = x['ocean_proximity'].mode()
+            x['ocean_proximity'].fillna(self.mode)
+            one_hot_encoded_ocean_proximities = pd.get_dummies(x['ocean_proximity'])
+
+            # Concatenate one-hot encoded columns and numerical
+            x_new = pd.concat([x_without_ocean_proximity, one_hot_encoded_ocean_proximities], axis=1)
+
+            # Save the column headers (ensuring the test dataset has the same columns)
+            x_new = x_new[self.columns]
+            
+            x = x_new.copy()
+
+        # Return preprocessed x and y, return None for y if it was None
+        return x, (y if isinstance(y, pd.DataFrame) else None)
+
+        
         
     def fit(self, x, y):
         """
@@ -216,11 +247,6 @@ def example_main():
     # But remember that LabTS tests take Pandas DataFrame as inputs
     data = pd.read_csv("housing.csv") 
 
-    # Get the column-wise number of NA values in a table
-    # print(data.isna().sum())
-    # Get the number of duplicated rows.
-    # print(data.duplicated().sum())
-
     # Splitting input and output
     x_train = data.loc[:, data.columns != output_label]
     y_train = data.loc[:, [output_label]]
@@ -230,12 +256,12 @@ def example_main():
     # You probably want to separate some held-out data 
     # to make sure the model isn't overfitting
     regressor = Regressor(x_train, nb_epoch = 10)
-    regressor.fit(x_train, y_train)
-    save_regressor(regressor)
-
+    print(x_train.head())
+    #regressor.fit(x_train, y_train)
+    #save_regressor(regressor)
     # Error
-    error = regressor.score(x_train, y_train)
-    print("\nRegressor error: {}\n".format(error))
+    #error = regressor.score(x_train, y_train)
+    #print("\nRegressor error: {}\n".format(error))
 
 
 if __name__ == "__main__":
