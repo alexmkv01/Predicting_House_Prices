@@ -1,7 +1,33 @@
-import torch
 import pickle
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
+import os
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+import torch.nn.functional as F
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+class Net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear_stack = nn.Sequential(
+            nn.Linear(9,32),
+            nn.ReLU(),
+            nn.Linear(32,128),
+            nn.ReLU(),
+            nn.Linear(128,10),
+            nn.ReLU(),
+            nn.Linear(10,1)
+        )
+
+    def forward(self, x):
+        output = self.linear_stack(x)
+        return output
+
 
 class Regressor():
 
@@ -27,10 +53,9 @@ class Regressor():
         self.columns = None
         self.mode = None
 
-        # Replace this code with your own
+        # Call preprocessor to get shape of cleaned data.
         X, _ = self._preprocessor(x, training = True)
-        print(x.head())
-        
+
         self.input_size = X.shape[1]
         self.output_size = 1
         self.nb_epoch = nb_epoch 
@@ -58,7 +83,7 @@ class Regressor():
         # x consists of training data. Preprocess.
         if training:
 
-            # Separate Numerical and Categorical Columns.
+            # Separate numerical and categorical Columns.
             x_without_ocean_proximity = x.drop('ocean_proximity', axis=1)
 
             # Fill missing numerical values with median + normalize
@@ -75,13 +100,11 @@ class Regressor():
             one_hot_encoded_ocean_proximities = pd.get_dummies(x['ocean_proximity'])
 
             # Concatenate one-hot encoded columns and numerical
-            x_new = pd.concat([x_without_ocean_proximity, one_hot_encoded_ocean_proximities], axis=1)
+            x = pd.concat([x_without_ocean_proximity, one_hot_encoded_ocean_proximities], axis=1)
 
             # Save the column headers (ensuring the test dataset has the same columns)
-            self.columns = list(x_new.columns.values)
-            x_new = x_new[self.columns]
-
-            x = x_new.copy()
+            self.columns = list(x.columns.values)
+            x = x[self.columns]
 
         else:
             
@@ -102,12 +125,10 @@ class Regressor():
             one_hot_encoded_ocean_proximities = pd.get_dummies(x['ocean_proximity'])
 
             # Concatenate one-hot encoded columns and numerical
-            x_new = pd.concat([x_without_ocean_proximity, one_hot_encoded_ocean_proximities], axis=1)
+            x = pd.concat([x_without_ocean_proximity, one_hot_encoded_ocean_proximities], axis=1)
 
             # Save the column headers (ensuring the test dataset has the same columns)
-            x_new = x_new[self.columns]
-            
-            x = x_new.copy()
+            x = x[self.columns]
 
         # Return preprocessed x and y, return None for y if it was None
         return x, (y if isinstance(y, pd.DataFrame) else None)
@@ -127,17 +148,43 @@ class Regressor():
             self {Regressor} -- Trained model.
 
         """
+        learning_rate = 0.1
+        batch_size = 32
 
-        #######################################################################
-        #                       ** START OF YOUR CODE **
-        #######################################################################
 
         X, Y = self._preprocessor(x, y = y, training = True) # Do not forget
-        return self
+        trainloader = torch.utils.data.DataLoader(X, batch_size=batch_size,
+                                          shuffle=False, num_workers=2)
+        
+        testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
+                                         shuffle=False, num_workers=2)
 
-        #######################################################################
-        #                       ** END OF YOUR CODE **
-        #######################################################################
+
+        net = Net()
+        for epoch in range(2):  # loop over the dataset multiple times
+            running_loss = 0.0
+            for i, data in enumerate(trainloader, 0):
+                # get the inputs; data is a list of [inputs, labels]
+                inputs, labels = data
+
+                # zero the parameter gradients
+                optimizer.zero_grad()
+
+                # forward + backward + optimize
+                outputs = net(inputs)
+                loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+
+                # print statistics
+                running_loss += loss.item()
+                if i % 2000 == 1999:    # print every 2000 mini-batches
+                    print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}')
+                    running_loss = 0.0
+            
+            with torch.no_
+
+        return self
 
             
     def predict(self, x):
@@ -248,16 +295,20 @@ def example_main():
     data = pd.read_csv("housing.csv") 
 
     # Splitting input and output
-    x_train = data.loc[:, data.columns != output_label]
-    y_train = data.loc[:, [output_label]]
+    x = data.loc[:, data.columns != output_label]
+    y = data.loc[:, [output_label]]
 
     # Training
     # This example trains on the whole available dataset. 
     # You probably want to separate some held-out data 
     # to make sure the model isn't overfitting
-    regressor = Regressor(x_train, nb_epoch = 10)
-    print(x_train.head())
-    #regressor.fit(x_train, y_train)
+    regressor = Regressor(x, nb_epoch = 10)
+
+
+    x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=104, train_size=0.8, shuffle=True)
+    x_test, x_val, y_test, y_val = train_test_split(x_test, y_test, random_state=104, train_size=0.5, shuffle=True)
+
+    regressor.fit(x_train, y_train)
     #save_regressor(regressor)
     # Error
     #error = regressor.score(x_train, y_train)
