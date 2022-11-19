@@ -8,6 +8,8 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import datasets, transforms
 import torch.nn.functional as F
+from sklearn.metrics import r2_score, mean_squared_error
+import matplotlib.pyplot as plt
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -29,7 +31,7 @@ class Net(nn.Module):
 
 class Regressor():
 
-    def __init__(self, x, nb_epoch = 1000):
+    def __init__(self, x, nb_epochs=100, lr=0.01, bs=64, loss_func=nn.MSELoss()):
         """ 
         Initialise the model.
           
@@ -38,6 +40,7 @@ class Regressor():
                 (batch_size, input_size), used to compute the size 
                 of the network.
             - nb_epoch {int} -- number of epochs to train the network.
+            -- add new 
 
         """
 
@@ -45,18 +48,26 @@ class Regressor():
         # Remember to set them with a default value for LabTS tests
 
         # Constants used for normalising the numerical features.
+      
         self.mean = None
         self.median_values = None
         self.std = None
         self.columns = None
         self.mode = None
 
+        self.model = Net()
+        self.learning_rate = lr
+        self.epochs = nb_epochs
+        self.batch_size = bs
+        self.criterion = loss_func
+
         # Call preprocessor to get shape of cleaned data.
         X, _ = self._preprocessor(x, training = True)
 
+        # eventually add number of layers, and dimensions of neurons for hyperparam tuning
         self.input_size = X.shape[1]
         self.output_size = 1
-        self.nb_epoch = nb_epoch 
+ 
         return
 
 
@@ -103,24 +114,6 @@ class Regressor():
             # Save the column headers (ensuring the test dataset has the same columns)
             self.columns = list(x.columns.values)
 
-            """ 
-            print("mean:")
-            print(self.mean)
-            print("")
-            print("std:")
-            print(self.std)
-            print()
-            print("median:")
-            print(self.median_values)
-            print()
-            print("mode:")
-            print(self.mode)
-            print()
-            print("columns:")
-            print(self.columns)
-            print()
-            """
-
         else:
             
             # Separate Numerical and Categorical Columns.
@@ -165,13 +158,8 @@ class Regressor():
         """
 
         # Instantiate model.
-        model = Net()
 
         # Define hyperparameters for learning.
-        epochs = 100
-        learning_rate = 0.001
-        batch_size = 64
-        criterion = nn.MSELoss()
 
         # Separate training data (90% of full dataset) to give us a total 80% train, 10% test, 10% val split.
         x_train, x_val, y_train, y_val = train_test_split(x, y, random_state=104, test_size=0.11, shuffle=True)
@@ -195,21 +183,23 @@ class Regressor():
         val_set = TensorDataset(x_val, y_val)
 
         # Batch (already shuffled) data.
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=2) 
-        val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=2)
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=self.batch_size, shuffle=False, num_workers=2) 
+        val_loader = torch.utils.data.DataLoader(val_set, batch_size=self.batch_size, shuffle=False, num_workers=2)
 
         # Use stochastic gradient descent optimiser.
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+
+        training_losses = []
+        val_losses = []
 
         # Loop for given number of epochs
-        for epoch in range(epochs):  
+        for epoch in range(self.epochs):  
 
-            training_losses = []
-            val_losses = []
+            
             running_loss = 0
 
             # Execute learning cycle for all batches.
-            model.train()
+            self.model.train()
             for i, data in enumerate(train_loader):
                 
                 # Zero the parameter gradients
@@ -219,10 +209,10 @@ class Regressor():
                 inputs, labels = data
 
                 # Compute the model output over all inputs in this batch.
-                predictions = model(inputs)
+                predictions = self.model(inputs)
 
                 # Compute the MSE loss between the model outputs and labels
-                RMSE_loss = torch.sqrt(criterion(predictions, labels))
+                RMSE_loss = torch.sqrt(self.criterion(predictions, labels))
 
                 running_loss += RMSE_loss.item()
 
@@ -237,20 +227,23 @@ class Regressor():
             
             running_loss = 0
 
-            model.eval()
+            self.model.eval()
             with torch.no_grad():
                 for i, data in enumerate(val_loader):
                     inputs, labels = data
-                    predictions = model(inputs)
-                    RMSE_loss = torch.sqrt(criterion(predictions, labels))
+                    predictions = self.model(inputs)
+                    RMSE_loss = torch.sqrt(self.criterion(predictions, labels))
                     running_loss += RMSE_loss.item()
             
             val_loss = running_loss / len(val_loader)
             val_losses.append(val_loss)
-
-            print("epoch: {}, training loss: {}".format(epoch+1, training_loss))
-            print("epoch: {}, validation loss: {}".format(epoch+1, val_loss))
-            print()
+            
+            if epoch % 10 == 9 or epoch==0:
+                print("epoch: {}, training loss: {}".format(epoch+1, training_loss))
+                print("epoch: {}, validation loss: {}".format(epoch+1, val_loss))
+                print()
+        
+        # plot_learning_curve(training_losses, val_losses)        
 
         return 
 
@@ -268,16 +261,17 @@ class Regressor():
 
         """
 
-        #######################################################################
-        #                       ** START OF YOUR CODE **
-        #######################################################################
+        # x_test, _ = self._preprocessor(x, training = False) # Do not forget
+        x_test = torch.tensor(x.values, dtype=torch.float32)
+        predictions = []
+        for row in x_test:
+            prediction = self.model(row)
+            predictions.append(prediction.item())
 
-        X, _ = self._preprocessor(x, training = False) # Do not forget
-        pass
+        n = len(predictions)
+        predictions = np.array(predictions).reshape(n,1)
+        return predictions
 
-        #######################################################################
-        #                       ** END OF YOUR CODE **
-        #######################################################################
 
     def score(self, x, y):
         """
@@ -293,16 +287,44 @@ class Regressor():
 
         """
 
-        #######################################################################
-        #                       ** START OF YOUR CODE **
-        #######################################################################
+        X, Y_gold = self._preprocessor(x, y = y, training = False) 
+        Y_predict = self.predict(X)
+        rmse = np.sqrt(mean_squared_error(Y_gold, Y_predict))
+        return rmse 
+    
+    def r2_score(self, x, y):
+        """
+        Function to evaluate the model accuracy on a validation dataset.
 
-        X, Y = self._preprocessor(x, y = y, training = False) # Do not forget
-        return 0 # Replace this code with your own
+        Arguments:
+            - x {pd.DataFrame} -- Raw input array of shape 
+                (batch_size, input_size).
+            - y {pd.DataFrame} -- Raw output array of shape (batch_size, 1).
 
-        #######################################################################
-        #                       ** END OF YOUR CODE **
-        #######################################################################
+        Returns:
+            {float} -- Quantification of the efficiency of the model.
+
+        """
+
+        X, Y_gold = self._preprocessor(x, y = y, training = False) 
+        Y_predict = self.predict(X)
+        r2 = r2_score(Y_gold, Y_predict)
+
+        return r2 
+    
+
+def plot_learning_curve(training_errors, val_errors):
+    assert(len(training_errors) == len(val_errors))
+    plt.figure(figsize=(12,10))
+    epochs = [i for i in range(len(training_errors))]
+    plt.plot(epochs, training_errors)
+    plt.plot(epochs, val_errors)
+    plt.xlabel("Epochs")
+    plt.ylabel("RMSE")
+    plt.legend(["Training", "Validation"])
+    plt.title("Training Curve")
+    plt.show()
+    return
 
 
 def save_regressor(trained_model): 
@@ -366,18 +388,29 @@ def example_main():
     x = data.loc[:, data.columns != output_label]
     y = data.loc[:, [output_label]]
 
-    # Training
-    # This example trains on the whole available dataset. 
-    # You probably want to separate some held-out data 
-    # to make sure the model isn't overfitting
-    regressor = Regressor(x, nb_epoch = 10)
-
     x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=104, train_size=0.9, shuffle=True)
 
+    # hyperparameters
+    epochs = 200
+    learning_rate = 0.2
+    batch_size = 64
+    criterion = nn.MSELoss()
+
+    regressor = Regressor(x, nb_epochs=epochs, lr=learning_rate, bs=batch_size, loss_func=criterion)
     regressor.fit(x_train, y_train)
+
+    # prediction on unseen test data
+    rmse = regressor.score(x_test, y_test)
+    r2_score = regressor.r2_score(x_test, y_test)
+
+    print("On test dataset:")
+    print(rmse)
+    print(r2_score)
+    print()
+
     #save_regressor(regressor)
     # Error
-    #error = regressor.score(x_train, y_train)
+    #
     #print("\nRegressor error: {}\n".format(error))
 
 
