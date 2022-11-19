@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 import os
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from torchvision import datasets, transforms
 import torch.nn.functional as F
 
@@ -15,7 +15,7 @@ class Net(nn.Module):
     def __init__(self):
         super().__init__()
         self.linear_stack = nn.Sequential(
-            nn.Linear(9,32),
+            nn.Linear(13,32),
             nn.ReLU(),
             nn.Linear(32,128),
             nn.ReLU(),
@@ -92,7 +92,7 @@ class Regressor():
             self.median_values = x_without_ocean_proximity.median()
 
             x_without_ocean_proximity = x_without_ocean_proximity.fillna(self.median_values)
-            x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
+            # x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
 
             # Fill missing categorical values with mode 
             self.mode = x['ocean_proximity'].mode()
@@ -104,7 +104,6 @@ class Regressor():
 
             # Save the column headers (ensuring the test dataset has the same columns)
             self.columns = list(x.columns.values)
-            x = x[self.columns]
 
         else:
             
@@ -113,7 +112,7 @@ class Regressor():
 
             # Fill missing numerical values with median + normalize
             x_without_ocean_proximity = x_without_ocean_proximity.fillna(self.median_values)
-            x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
+            # x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
 
             # Fill missing categorical values with mode 
             x['ocean_proximity'].fillna(self.mode)
@@ -126,6 +125,11 @@ class Regressor():
 
             # Concatenate one-hot encoded columns and numerical
             x = pd.concat([x_without_ocean_proximity, one_hot_encoded_ocean_proximities], axis=1)
+
+            differences = list(set(self.columns) - set(x.columns.values))
+
+            for col in differences:
+                x[col]= 0
 
             # Save the column headers (ensuring the test dataset has the same columns)
             x = x[self.columns]
@@ -148,22 +152,47 @@ class Regressor():
             self {Regressor} -- Trained model.
 
         """
+
+        # Instantiate model.
+        model = Net()
+
+        # Define hyperparameters for learning.
         learning_rate = 0.1
         batch_size = 32
+        criterion = nn.MSELoss()
+        epochs = 50
 
+        # Separate training data (90% of full dataset) to give us a total 80% train, 10% test, 10% val split.
+        x_train, x_val, y_train, y_val = train_test_split(x, y, random_state=104, test_size=0.11, shuffle=True)
 
-        X, Y = self._preprocessor(x, y = y, training = True) # Do not forget
-        trainloader = torch.utils.data.DataLoader(X, batch_size=batch_size,
-                                          shuffle=False, num_workers=2)
-        
-        testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                         shuffle=False, num_workers=2)
+        # Preprocess training and validation data.
+        x_train, y_train = self._preprocessor(x_train, y_train, training = True) 
+        x_val, y_val = self._preprocessor(x_val, y_val, training = False)
 
+        x_train = torch.tensor(x_train.values, dtype=torch.float32)
+        y_train = torch.tensor(y_train.values, dtype=torch.float32)
 
-        net = Net()
-        for epoch in range(2):  # loop over the dataset multiple times
-            running_loss = 0.0
-            for i, data in enumerate(trainloader, 0):
+        x_val = torch.tensor(x_val.values, dtype=torch.float32)
+        y_val = torch.tensor(y_val.values, dtype=torch.float32)
+
+        train_set = TensorDataset(x_train, y_train)
+        val_set = TensorDataset(x_val, y_val)
+
+        # Batch (already shuffled) data.
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=False, num_workers=2) 
+        val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=2)
+
+        # Use stochastic gradient descent optimiser.
+        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+
+        for epoch in range(epochs):  # loop over the dataset multiple times
+
+            training_losses = []
+            val_losses = []
+
+            running_loss = []
+
+            for i, data in enumerate(train_loader, 0):
                 # get the inputs; data is a list of [inputs, labels]
                 inputs, labels = data
 
@@ -171,18 +200,34 @@ class Regressor():
                 optimizer.zero_grad()
 
                 # forward + backward + optimize
-                outputs = net(inputs)
+                outputs = model(inputs)
+
+                print("Outputs:")
+                print(outputs)
+                print("")
+                print("Labels:")
+                print(labels)
+                quit()
+                
+
                 loss = criterion(outputs, labels)
+                running_loss.append(loss.item())
                 loss.backward()
                 optimizer.step()
 
-                # print statistics
-                running_loss += loss.item()
-                if i % 2000 == 1999:    # print every 2000 mini-batches
-                    print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}')
-                    running_loss = 0.0
+            print(running_loss)
+            #quit()
+            # performed single training epoch -> get loss on single batch of unseen data
+            with torch.no_grad():
+                inputs, labels = next(iter(val_loader))
+                outputs = model(inputs)
+                val_loss = criterion(outputs, labels)
             
-            with torch.no_
+            training_loss = np.mean(running_loss)
+            training_losses.append(training_loss)
+            val_losses.append(val_loss.item())
+            print("epoch: {}, training loss: {}".format(epoch+1, training_loss))
+            print("epoch: {}, validation loss: {}".format(epoch+1, val_loss.item()))
 
         return self
 
@@ -304,9 +349,7 @@ def example_main():
     # to make sure the model isn't overfitting
     regressor = Regressor(x, nb_epoch = 10)
 
-
-    x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=104, train_size=0.8, shuffle=True)
-    x_test, x_val, y_test, y_val = train_test_split(x_test, y_test, random_state=104, train_size=0.5, shuffle=True)
+    x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=104, train_size=0.9, shuffle=True)
 
     regressor.fit(x_train, y_train)
     #save_regressor(regressor)
