@@ -17,9 +17,7 @@ class Net(nn.Module):
         self.linear_stack = nn.Sequential(
             nn.Linear(13,32),
             nn.ReLU(),
-            nn.Linear(32,128),
-            nn.ReLU(),
-            nn.Linear(128,10),
+            nn.Linear(32,10),
             nn.ReLU(),
             nn.Linear(10,1)
         )
@@ -48,7 +46,7 @@ class Regressor():
 
         # Constants used for normalising the numerical features.
         self.mean = None
-        self.median = None
+        self.median_values = None
         self.std = None
         self.columns = None
         self.mode = None
@@ -92,7 +90,7 @@ class Regressor():
             self.median_values = x_without_ocean_proximity.median()
 
             x_without_ocean_proximity = x_without_ocean_proximity.fillna(self.median_values)
-            # x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
+            x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
 
             # Fill missing categorical values with mode 
             self.mode = x['ocean_proximity'].mode()
@@ -105,6 +103,24 @@ class Regressor():
             # Save the column headers (ensuring the test dataset has the same columns)
             self.columns = list(x.columns.values)
 
+            """ 
+            print("mean:")
+            print(self.mean)
+            print("")
+            print("std:")
+            print(self.std)
+            print()
+            print("median:")
+            print(self.median_values)
+            print()
+            print("mode:")
+            print(self.mode)
+            print()
+            print("columns:")
+            print(self.columns)
+            print()
+            """
+
         else:
             
             # Separate Numerical and Categorical Columns.
@@ -112,14 +128,9 @@ class Regressor():
 
             # Fill missing numerical values with median + normalize
             x_without_ocean_proximity = x_without_ocean_proximity.fillna(self.median_values)
-            # x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
+            x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
 
             # Fill missing categorical values with mode 
-            x['ocean_proximity'].fillna(self.mode)
-            one_hot_encoded_ocean_proximities = pd.get_dummies(x['ocean_proximity'])
-
-            # Fill missing categorical values with mode 
-            self.mode = x['ocean_proximity'].mode()
             x['ocean_proximity'].fillna(self.mode)
             one_hot_encoded_ocean_proximities = pd.get_dummies(x['ocean_proximity'])
 
@@ -157,10 +168,10 @@ class Regressor():
         model = Net()
 
         # Define hyperparameters for learning.
-        learning_rate = 0.1
-        batch_size = 32
+        epochs = 100
+        learning_rate = 0.001
+        batch_size = 64
         criterion = nn.MSELoss()
-        epochs = 50
 
         # Separate training data (90% of full dataset) to give us a total 80% train, 10% test, 10% val split.
         x_train, x_val, y_train, y_val = train_test_split(x, y, random_state=104, test_size=0.11, shuffle=True)
@@ -169,13 +180,18 @@ class Regressor():
         x_train, y_train = self._preprocessor(x_train, y_train, training = True) 
         x_val, y_val = self._preprocessor(x_val, y_val, training = False)
 
+        # Convert training data and associated labels to tensors.
         x_train = torch.tensor(x_train.values, dtype=torch.float32)
         y_train = torch.tensor(y_train.values, dtype=torch.float32)
 
+        # Convert validation data and associated labels to tensors.
         x_val = torch.tensor(x_val.values, dtype=torch.float32)
         y_val = torch.tensor(y_val.values, dtype=torch.float32)
 
+        # Combine the training set and training label tensors into a single tensor object.
         train_set = TensorDataset(x_train, y_train)
+
+        # Combine the validation set and validation label tensors into a single tensor object.
         val_set = TensorDataset(x_val, y_val)
 
         # Batch (already shuffled) data.
@@ -183,53 +199,60 @@ class Regressor():
         val_loader = torch.utils.data.DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=2)
 
         # Use stochastic gradient descent optimiser.
-        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-        for epoch in range(epochs):  # loop over the dataset multiple times
+        # Loop for given number of epochs
+        for epoch in range(epochs):  
 
             training_losses = []
             val_losses = []
+            running_loss = 0
 
-            running_loss = []
-
-            for i, data in enumerate(train_loader, 0):
-                # get the inputs; data is a list of [inputs, labels]
-                inputs, labels = data
-
-                # zero the parameter gradients
+            # Execute learning cycle for all batches.
+            model.train()
+            for i, data in enumerate(train_loader):
+                
+                # Zero the parameter gradients
                 optimizer.zero_grad()
 
-                # forward + backward + optimize
-                outputs = model(inputs)
+                # Get the inputs; data is a list of [inputs, labels]
+                inputs, labels = data
 
-                print("Outputs:")
-                print(outputs)
-                print("")
-                print("Labels:")
-                print(labels)
-                quit()
-                
+                # Compute the model output over all inputs in this batch.
+                predictions = model(inputs)
 
-                loss = criterion(outputs, labels)
-                running_loss.append(loss.item())
-                loss.backward()
+                # Compute the MSE loss between the model outputs and labels
+                RMSE_loss = torch.sqrt(criterion(predictions, labels))
+
+                running_loss += RMSE_loss.item()
+
+                # Compute the gradients.
+                RMSE_loss.backward()
+
+                # Backpropagate the gradients.
                 optimizer.step()
 
-            print(running_loss)
-            #quit()
-            # performed single training epoch -> get loss on single batch of unseen data
-            with torch.no_grad():
-                inputs, labels = next(iter(val_loader))
-                outputs = model(inputs)
-                val_loss = criterion(outputs, labels)
-            
-            training_loss = np.mean(running_loss)
+            training_loss = running_loss / len(train_loader)
             training_losses.append(training_loss)
-            val_losses.append(val_loss.item())
-            print("epoch: {}, training loss: {}".format(epoch+1, training_loss))
-            print("epoch: {}, validation loss: {}".format(epoch+1, val_loss.item()))
+            
+            running_loss = 0
 
-        return self
+            model.eval()
+            with torch.no_grad():
+                for i, data in enumerate(val_loader):
+                    inputs, labels = data
+                    predictions = model(inputs)
+                    RMSE_loss = torch.sqrt(criterion(predictions, labels))
+                    running_loss += RMSE_loss.item()
+            
+            val_loss = running_loss / len(val_loader)
+            val_losses.append(val_loss)
+
+            print("epoch: {}, training loss: {}".format(epoch+1, training_loss))
+            print("epoch: {}, validation loss: {}".format(epoch+1, val_loss))
+            print()
+
+        return 
 
             
     def predict(self, x):
