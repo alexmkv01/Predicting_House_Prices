@@ -31,7 +31,7 @@ class Net(nn.Module):
 
 class Regressor():
 
-    def __init__(self, x, nb_epochs=100, lr=0.01, bs=64, loss_func=nn.MSELoss()):
+    def __init__(self, x, nb_epoch=100, lr=0.01, bs=64, loss_func=nn.MSELoss()):
         """ 
         Initialise the model.
           
@@ -57,7 +57,7 @@ class Regressor():
 
         self.model = Net()
         self.learning_rate = lr
-        self.epochs = nb_epochs
+        self.nb_epoch = nb_epoch
         self.batch_size = bs
         self.criterion = loss_func
 
@@ -179,7 +179,7 @@ class Regressor():
         val_losses = []
 
         # Loop for given number of epochs
-        for epoch in range(self.epochs):  
+        for epoch in range(self.nb_epoch):  
 
             running_loss = 0
 
@@ -372,21 +372,21 @@ def example_main():
 
     x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=104, train_size=0.9, shuffle=True)
 
-    # hyperparameters
+    # Hyperparameters
     epochs = 200
     learning_rate = 0.2
     batch_size = 64
     criterion = nn.MSELoss()
 
     # regressor = Regressor(x)
-    regressor = Regressor(x, nb_epochs=epochs, lr=learning_rate, bs=batch_size, loss_func=criterion)
+    regressor = Regressor(x, nb_epoch=epochs, lr=learning_rate, bs=batch_size, loss_func=criterion)
     regressor.fit(x_train, y_train)
 
     save_regressor(regressor)
 
     regressor = load_regressor()
     
-    # prediction on unseen test data
+    # Prediction on unseen test data
     rmse = regressor.score(x_test, y_test)
     r2_score = regressor.r2_score(x_test, y_test)
 
