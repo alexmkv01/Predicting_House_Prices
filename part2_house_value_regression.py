@@ -31,7 +31,7 @@ class Net(nn.Module):
 
 class Regressor():
 
-    def __init__(self, x, nb_epoch=100, lr=0.01, bs=64, loss_func=nn.MSELoss()):
+    def __init__(self, x, nb_epoch=100, lr=0.01, bs=64):
         """ 
         Initialise the model.
           
@@ -59,7 +59,6 @@ class Regressor():
         self.learning_rate = lr
         self.nb_epoch = nb_epoch
         self.batch_size = bs
-        self.criterion = loss_func
 
         # Call preprocessor to get shape of cleaned data.
         X, _ = self._preprocessor(x, training = True)
@@ -174,6 +173,7 @@ class Regressor():
 
         # Use stochastic gradient descent optimiser.
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        criterion = nn.MSELoss()
 
         training_losses = []
         val_losses = []
@@ -195,7 +195,7 @@ class Regressor():
                 predictions = self.model(inputs)
 
                 # Compute the MSE loss between the model outputs and labels
-                RMSE_loss = torch.sqrt(self.criterion(predictions, labels))
+                RMSE_loss = torch.sqrt(criterion(predictions, labels))
                 running_loss += RMSE_loss.item()
 
                 # Backpropagate the gradients.
@@ -376,10 +376,11 @@ def example_main():
     epochs = 200
     learning_rate = 0.2
     batch_size = 64
-    criterion = nn.MSELoss()
 
-    # regressor = Regressor(x)
-    regressor = Regressor(x, nb_epoch=epochs, lr=learning_rate, bs=batch_size, loss_func=criterion)
+    regressor = Regressor(x)
+    # regressor = Regressor(x, nb_epoch=epochs, lr=learning_rate, bs=batch_size)
+
+
     regressor.fit(x_train, y_train)
 
     save_regressor(regressor)
@@ -394,6 +395,7 @@ def example_main():
     print("\nRegressor RMSE: {}\n".format(rmse))
     print("Regressor r2 score: {}\n".format(r2_score))
     print()
+    
 
 
 if __name__ == "__main__":
