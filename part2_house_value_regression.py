@@ -2,7 +2,6 @@ import pickle
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-import os
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -31,7 +30,7 @@ class Net(nn.Module):
 
 class Regressor():
 
-    def __init__(self, x, nb_epoch=100, lr=0.01, bs=64):
+    def __init__(self, x, nb_epoch=20, lr=0.01, bs=64):
         """ 
         Initialise the model.
           
@@ -380,9 +379,7 @@ def example_main():
     regressor = Regressor(x)
     # regressor = Regressor(x, nb_epoch=epochs, lr=learning_rate, bs=batch_size)
 
-
     regressor.fit(x_train, y_train)
-
     save_regressor(regressor)
 
     regressor = load_regressor()
@@ -395,7 +392,6 @@ def example_main():
     print("\nRegressor RMSE: {}\n".format(rmse))
     print("Regressor r2 score: {}\n".format(r2_score))
     print()
-    
 
 
 if __name__ == "__main__":
