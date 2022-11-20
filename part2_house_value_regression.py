@@ -138,8 +138,12 @@ class Regressor():
             # Save the column headers (ensuring the test dataset has the same columns)
             x = x[self.columns]
 
+        # Convert training data and associated labels to tensors.
+        x = torch.tensor(x.values, dtype=torch.float32)
+        y = None if y is None else torch.tensor(y.values, dtype=torch.float32)
+
         # Return preprocessed x and y, return None for y if it was None
-        return x, (y if isinstance(y, pd.DataFrame) else None)
+        return x, y
 
         
     def fit(self, x, y):
@@ -161,10 +165,6 @@ class Regressor():
 
         # Preprocess training and validation data.
         x_train, y_train = self._preprocessor(x_train, y_train, training = True) 
-
-        # Convert training data and associated labels to tensors.
-        x_train = torch.tensor(x_train.values, dtype=torch.float32)
-        y_train = torch.tensor(y_train.values, dtype=torch.float32)
 
         # Combine the training set and training label tensors into a single tensor object.
         train_set = TensorDataset(x_train, y_train)
@@ -232,9 +232,8 @@ class Regressor():
         """
 
         # x_test, _ = self._preprocessor(x, training = False) # Do not forget
-        x_test = torch.tensor(x.values, dtype=torch.float32)
         predictions = []
-        for row in x_test:
+        for row in x:
             prediction = self.model(row)
             predictions.append(prediction.item())
 
@@ -299,9 +298,9 @@ def plot_learning_curve(training_errors, val_errors):
 
 
 def save_regressor(trained_model): 
-    """ 
-    Utility function to save the trained regressor model in part2_model.pickle.
+    """  Utility function to save the trained regressor model in part2_model.pickle.
     """
+
     # If you alter this, make sure it works in tandem with load_regressor
     with open('part2_model.pickle', 'wb') as target:
         pickle.dump(trained_model, target)
@@ -309,9 +308,9 @@ def save_regressor(trained_model):
 
 
 def load_regressor(): 
-    """ 
-    Utility function to load the trained regressor model in part2_model.pickle.
+    """  Utility function to load the trained regressor model in part2_model.pickle.
     """
+
     # If you alter this, make sure it works in tandem with save_regressor
     with open('part2_model.pickle', 'rb') as target:
         trained_model = pickle.load(target)
@@ -366,23 +365,20 @@ def example_main():
     batch_size = 64
     criterion = nn.MSELoss()
 
-    regressor = Regressor(x, nb_epochs=epochs, lr=learning_rate, bs=batch_size, loss_func=criterion)
     #regressor = Regressor(x)
+    regressor = Regressor(x, nb_epochs=epochs, lr=learning_rate, bs=batch_size, loss_func=criterion)
     regressor.fit(x_train, y_train)
 
     # prediction on unseen test data
     rmse = regressor.score(x_test, y_test)
     r2_score = regressor.r2_score(x_test, y_test)
 
-    print("On test dataset:")
-    print(rmse)
-    print(r2_score)
-    print()
+    save_regressor(regressor)
 
-    #save_regressor(regressor)
     # Error
-    #
-    #print("\nRegressor error: {}\n".format(error))
+    print("\nRegressor RMSE: {}\n".format(rmse))
+    print("\nRegressor r2 score: {}\n".format(r2_score))
+    print()
 
 
 if __name__ == "__main__":
