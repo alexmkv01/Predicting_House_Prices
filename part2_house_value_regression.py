@@ -71,7 +71,7 @@ class Regressor():
         return
 
 
-    def _preprocessor(self, x, y = None, training = True):
+    def _preprocessor(self, x, y = None, training = False):
         """ 
         Preprocess input of the network.
           
@@ -215,7 +215,7 @@ class Regressor():
                 # pass
         
         # plot_learning_curve(training_losses, val_losses)        
-        return 
+        return self
 
             
     def predict(self, x):
@@ -231,9 +231,9 @@ class Regressor():
 
         """
 
-        # x_test, _ = self._preprocessor(x, training = False) # Do not forget
+        x, _ = self._preprocessor(x, training = False) # Do not forget
         predictions = []
-        for row in x:
+        for i, row in enumerate(x):
             prediction = self.model(row)
             predictions.append(prediction.item())
 
@@ -257,8 +257,15 @@ class Regressor():
         """
 
         X, Y_gold = self._preprocessor(x, y = y, training = False) 
-        Y_predict = self.predict(X)
+        predictions = []
+        for i, row in enumerate(X):
+            prediction = self.model(row)
+            predictions.append(prediction.item())
+
+        n = len(predictions)
+        Ｙ＿predict = np.array(predictions).reshape(n,1)
         rmse = np.sqrt(mean_squared_error(Y_gold, Y_predict))
+
         return rmse 
     
 
@@ -277,9 +284,15 @@ class Regressor():
         """
 
         X, Y_gold = self._preprocessor(x, y = y, training = False) 
-        Y_predict = self.predict(X)
-        r2 = r2_score(Y_gold, Y_predict)
+        predictions = []
+        for i, row in enumerate(X):
+            prediction = self.model(row)
+            predictions.append(prediction.item())
 
+        n = len(predictions)
+        Ｙ＿predict = np.array(predictions).reshape(n,1)
+        r2 = r2_score(Y_gold, Y_predict)
+         
         return r2 
     
 
@@ -365,19 +378,21 @@ def example_main():
     batch_size = 64
     criterion = nn.MSELoss()
 
-    #regressor = Regressor(x)
+    # regressor = Regressor(x)
     regressor = Regressor(x, nb_epochs=epochs, lr=learning_rate, bs=batch_size, loss_func=criterion)
     regressor.fit(x_train, y_train)
 
+    save_regressor(regressor)
+
+    regressor = load_regressor()
+    
     # prediction on unseen test data
     rmse = regressor.score(x_test, y_test)
     r2_score = regressor.r2_score(x_test, y_test)
 
-    save_regressor(regressor)
-
     # Error
     print("\nRegressor RMSE: {}\n".format(rmse))
-    print("\nRegressor r2 score: {}\n".format(r2_score))
+    print("Regressor r2 score: {}\n".format(r2_score))
     print()
 
 
