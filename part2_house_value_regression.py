@@ -142,7 +142,6 @@ class Regressor():
         return x, (y if isinstance(y, pd.DataFrame) else None)
 
         
-        
     def fit(self, x, y):
         """
         Regressor training function
@@ -157,34 +156,21 @@ class Regressor():
 
         """
 
-        # Instantiate model.
-
-        # Define hyperparameters for learning.
-
         # Separate training data (90% of full dataset) to give us a total 80% train, 10% test, 10% val split.
         x_train, x_val, y_train, y_val = train_test_split(x, y, random_state=104, test_size=0.11, shuffle=True)
 
         # Preprocess training and validation data.
         x_train, y_train = self._preprocessor(x_train, y_train, training = True) 
-        x_val, y_val = self._preprocessor(x_val, y_val, training = False)
 
         # Convert training data and associated labels to tensors.
         x_train = torch.tensor(x_train.values, dtype=torch.float32)
         y_train = torch.tensor(y_train.values, dtype=torch.float32)
 
-        # Convert validation data and associated labels to tensors.
-        x_val = torch.tensor(x_val.values, dtype=torch.float32)
-        y_val = torch.tensor(y_val.values, dtype=torch.float32)
-
         # Combine the training set and training label tensors into a single tensor object.
         train_set = TensorDataset(x_train, y_train)
 
-        # Combine the validation set and validation label tensors into a single tensor object.
-        val_set = TensorDataset(x_val, y_val)
-
         # Batch (already shuffled) data.
         train_loader = torch.utils.data.DataLoader(train_set, batch_size=self.batch_size, shuffle=False, num_workers=2) 
-        val_loader = torch.utils.data.DataLoader(val_set, batch_size=self.batch_size, shuffle=False, num_workers=2)
 
         # Use stochastic gradient descent optimiser.
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -195,7 +181,6 @@ class Regressor():
         # Loop for given number of epochs
         for epoch in range(self.epochs):  
 
-            
             running_loss = 0
 
             # Execute learning cycle for all batches.
@@ -205,46 +190,31 @@ class Regressor():
                 # Zero the parameter gradients
                 optimizer.zero_grad()
 
-                # Get the inputs; data is a list of [inputs, labels]
-                inputs, labels = data
-
                 # Compute the model output over all inputs in this batch.
+                inputs, labels = data
                 predictions = self.model(inputs)
 
                 # Compute the MSE loss between the model outputs and labels
                 RMSE_loss = torch.sqrt(self.criterion(predictions, labels))
-
                 running_loss += RMSE_loss.item()
 
-                # Compute the gradients.
-                RMSE_loss.backward()
-
                 # Backpropagate the gradients.
+                RMSE_loss.backward()
                 optimizer.step()
 
             training_loss = running_loss / len(train_loader)
             training_losses.append(training_loss)
             
-            running_loss = 0
-
-            self.model.eval()
-            with torch.no_grad():
-                for i, data in enumerate(val_loader):
-                    inputs, labels = data
-                    predictions = self.model(inputs)
-                    RMSE_loss = torch.sqrt(self.criterion(predictions, labels))
-                    running_loss += RMSE_loss.item()
-            
-            val_loss = running_loss / len(val_loader)
+            val_loss = self.score(x_val, y_val)
             val_losses.append(val_loss)
-            
+
             if epoch % 10 == 9 or epoch==0:
                 print("epoch: {}, training loss: {}".format(epoch+1, training_loss))
                 print("epoch: {}, validation loss: {}".format(epoch+1, val_loss))
                 print()
+                # pass
         
         # plot_learning_curve(training_losses, val_losses)        
-
         return 
 
             
@@ -292,6 +262,7 @@ class Regressor():
         rmse = np.sqrt(mean_squared_error(Y_gold, Y_predict))
         return rmse 
     
+
     def r2_score(self, x, y):
         """
         Function to evaluate the model accuracy on a validation dataset.
@@ -348,7 +319,6 @@ def load_regressor():
     return trained_model
 
 
-
 def RegressorHyperParameterSearch(): 
     # Ensure to add whatever inputs you deem necessary to this function
     """
@@ -397,6 +367,7 @@ def example_main():
     criterion = nn.MSELoss()
 
     regressor = Regressor(x, nb_epochs=epochs, lr=learning_rate, bs=batch_size, loss_func=criterion)
+    #regressor = Regressor(x)
     regressor.fit(x_train, y_train)
 
     # prediction on unseen test data
