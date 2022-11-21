@@ -18,15 +18,15 @@ from ray.tune.schedulers import ASHAScheduler
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 class Net(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, neurons):
+        self.layers = []
         super().__init__()
-        self.linear_stack = nn.Sequential(
-            nn.Linear(input_dim,32),
-            nn.ReLU(),
-            nn.Linear(32,10),
-            nn.ReLU(),
-            nn.Linear(10,output_dim)
-        )
+
+        for i in range(len(neurons)-1):
+            self.layers.append(nn.Linear(neurons[i], neurons[i+1]))
+            self.layers.append(nn.ReLU())
+
+        self.linear_stack = nn.Sequential(*self.layers)
 
     def forward(self, x):
         output = self.linear_stack(x)
@@ -35,7 +35,7 @@ class Net(nn.Module):
 
 class Regressor():
 
-    def __init__(self, x, nb_epoch=20, lr=0.01, bs=64):
+    def __init__(self, x, nb_epoch=20, lr=0.01, bs=64, neurons=[32,10]):
         """ 
         Initialise the model.
           
@@ -63,6 +63,7 @@ class Regressor():
         self.learning_rate = lr
         self.nb_epoch = nb_epoch
         self.batch_size = bs
+        self.neurons = neurons
 
         # Call preprocessor to get shape of cleaned data.
         X, _ = self._preprocessor(x, training = True)
@@ -70,7 +71,11 @@ class Regressor():
         # eventually add number of layers, and dimensions of neurons for hyperparam tuning
         self.input_size = X.shape[1]
         self.output_size = 1
-        self.model = Net(input_dim=self.input_size, output_dim=self.output_size)
+
+        self.neurons.insert(0, self.input_size)
+        self.neurons.append(self.output_size)
+
+        self.model = Net(neurons = self.neurons)
  
         return
 
@@ -350,15 +355,14 @@ def RegressorHyperParameterSearch():
 
     """
 
-    #######################################################################
-    #                       ** START OF YOUR CODE **
-    #######################################################################
+    config = {
+        "lr": tune.choice(np.linspace(1e-3, 2e-1, 5)),
+        "batch_size": tune.choice([16, 32, 64]),
+        "neurons": [ i for i in range(np.random.randint())]
+    }
+
 
     return  # Return the chosen hyper parameters
-
-    #######################################################################
-    #                       ** END OF YOUR CODE **
-    #######################################################################
 
 
 
@@ -381,9 +385,11 @@ def example_main():
     epochs = 200
     learning_rate = 0.2
     batch_size = 64
+    hidden_neurons = [32,10]
 
+ 
     # regressor = Regressor(x)
-    regressor = Regressor(x, nb_epoch=epochs, lr=learning_rate, bs=batch_size)
+    regressor = Regressor(x, nb_epoch=epochs, lr=learning_rate, bs=batch_size, neurons= hidden_neurons)
 
     regressor.fit(x_train, y_train)
     save_regressor(regressor)
@@ -402,4 +408,3 @@ def example_main():
 
 if __name__ == "__main__":
     example_main()
-
