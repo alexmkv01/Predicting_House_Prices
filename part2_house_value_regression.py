@@ -2,6 +2,7 @@ import pickle
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+import os
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -10,17 +11,21 @@ import torch.nn.functional as F
 from sklearn.metrics import r2_score, mean_squared_error
 import matplotlib.pyplot as plt
 
+from ray import tune
+from ray.tune import CLIReporter
+from ray.tune.schedulers import ASHAScheduler
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, input_dim, output_dim):
         super().__init__()
         self.linear_stack = nn.Sequential(
-            nn.Linear(13,32),
+            nn.Linear(input_dim,32),
             nn.ReLU(),
             nn.Linear(32,10),
             nn.ReLU(),
-            nn.Linear(10,1)
+            nn.Linear(10,output_dim)
         )
 
     def forward(self, x):
@@ -54,7 +59,7 @@ class Regressor():
         self.columns = None
         self.mode = None
 
-        self.model = Net()
+        
         self.learning_rate = lr
         self.nb_epoch = nb_epoch
         self.batch_size = bs
@@ -65,6 +70,7 @@ class Regressor():
         # eventually add number of layers, and dimensions of neurons for hyperparam tuning
         self.input_size = X.shape[1]
         self.output_size = 1
+        self.model = Net(input_dim=self.input_size, output_dim=self.output_size)
  
         return
 
@@ -294,7 +300,7 @@ class Regressor():
          
         return r2 
     
-
+"""
 def plot_learning_curve(training_errors, val_errors):
     assert(len(training_errors) == len(val_errors))
     plt.figure(figsize=(12,10))
@@ -307,7 +313,7 @@ def plot_learning_curve(training_errors, val_errors):
     plt.title("Training Curve")
     plt.show()
     return
-
+"""
 
 def save_regressor(trained_model): 
     """  Utility function to save the trained regressor model in part2_model.pickle.
@@ -376,8 +382,8 @@ def example_main():
     learning_rate = 0.2
     batch_size = 64
 
-    regressor = Regressor(x)
-    # regressor = Regressor(x, nb_epoch=epochs, lr=learning_rate, bs=batch_size)
+    # regressor = Regressor(x)
+    regressor = Regressor(x, nb_epoch=epochs, lr=learning_rate, bs=batch_size)
 
     regressor.fit(x_train, y_train)
     save_regressor(regressor)
