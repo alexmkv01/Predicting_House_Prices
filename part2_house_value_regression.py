@@ -8,12 +8,10 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import datasets, transforms
 import torch.nn.functional as F
-from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
-
-from ray import tune
-from ray.tune import CLIReporter
-from ray.tune.schedulers import ASHAScheduler
+from torch.optim.lr_scheduler import StepLR
+from sklearn.model_selection import GridSearchCV
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -25,17 +23,18 @@ class Net(nn.Module):
         for i in range(len(neurons)-1):
             self.layers.append(nn.Linear(neurons[i], neurons[i+1]))
             self.layers.append(nn.ReLU())
-
+            
         self.linear_stack = nn.Sequential(*self.layers)
 
     def forward(self, x):
+        # x = x.to(device)
         output = self.linear_stack(x)
         return output
 
 
 class Regressor():
 
-    def __init__(self, x, nb_epoch=20, lr=0.01, bs=64, neurons=[32,10]):
+    def __init__(self, x, nb_epoch=200, lr=0.2, bs=64, neurons=[32,64]):
         """ 
         Initialise the model.
           
@@ -58,8 +57,8 @@ class Regressor():
         self.std = None
         self.columns = None
         self.mode = None
+        self.x = x
 
-        
         self.learning_rate = lr
         self.nb_epoch = nb_epoch
         self.batch_size = bs
@@ -76,6 +75,7 @@ class Regressor():
         self.neurons.append(self.output_size)
 
         self.model = Net(neurons = self.neurons)
+        # self.model = self.model.to(device)
  
         return
 
@@ -94,7 +94,7 @@ class Regressor():
         Returns:
             - {torch.tensor} or {numpy.ndarray} -- Preprocessed input array of
               size (batch_size, input_size). The input_size does not have to be the same as the input_size for x above.
-            - {torch.tensor} or {numpy.ndarray} -- Preprocessed target array of
+            - {torch.tensor} or {numpy964.ndarray} -- Preprocessed target array of
               size (batch_size, 1).
             
         """
@@ -114,7 +114,7 @@ class Regressor():
 
             # Fill missing categorical values with mode 
             self.mode = x['ocean_proximity'].mode()
-            x['ocean_proximity'].fillna(self.mode)
+            x['ocean_proximity'].fillna(self.mode, inplace=True)
             one_hot_encoded_ocean_proximities = pd.get_dummies(x['ocean_proximity'])
 
             # Concatenate one-hot encoded columns and numerical
@@ -133,7 +133,7 @@ class Regressor():
             x_without_ocean_proximity = (x_without_ocean_proximity - self.mean) / self.std
 
             # Fill missing categorical values with mode 
-            x['ocean_proximity'].fillna(self.mode)
+            x['ocean_proximity'].fillna(self.mode, inplace=True)
             one_hot_encoded_ocean_proximities = pd.get_dummies(x['ocean_proximity'])
 
             # Concatenate one-hot encoded columns and numerical
@@ -170,7 +170,9 @@ class Regressor():
         """
 
         # Separate training data (90% of full dataset) to give us a total 80% train, 10% test, 10% val split.
-        x_train, x_val, y_train, y_val = train_test_split(x, y, random_state=104, test_size=0.11, shuffle=True)
+        # x_train, x_val, y_train, y_val = train_test_split(x, y, random_state=3, test_size=0.1, shuffle=False)
+        x_train = x
+        y_train = y
 
         # Preprocess training and validation data.
         x_train, y_train = self._preprocessor(x_train, y_train, training = True) 
@@ -179,14 +181,16 @@ class Regressor():
         train_set = TensorDataset(x_train, y_train)
 
         # Batch (already shuffled) data.
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=self.batch_size, shuffle=False, num_workers=2) 
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=self.batch_size, shuffle=False, num_workers=4) 
 
         # Use stochastic gradient descent optimiser.
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        
+        # scheduler = StepLR(optimizer, step_size=25, gamma=0.8)
         criterion = nn.MSELoss()
 
         training_losses = []
-        val_losses = []
+        # val_losses = []
 
         # Loop for given number of epochs
         for epoch in range(self.nb_epoch):  
@@ -202,6 +206,8 @@ class Regressor():
 
                 # Compute the model output over all inputs in this batch.
                 inputs, labels = data
+                # inputs = inputs.to(device)
+                # labels = labels.to(device)
                 predictions = self.model(inputs)
 
                 # Compute the MSE loss between the model outputs and labels
@@ -212,15 +218,21 @@ class Regressor():
                 RMSE_loss.backward()
                 optimizer.step()
 
-            training_loss = running_loss / len(train_loader)
-            training_losses.append(training_loss)
-            
-            val_loss = self.score(x_val, y_val)
-            val_losses.append(val_loss)
+            training_loss = running_loss / len(train_loader) # loss on last batch
+            #if scheduler.get_last_lr()[0] > 0.001:
+            #  scheduler.step()
 
-            if epoch % 10 == 9 or epoch==0:
+            training_losses.append(training_loss)
+
+            #self.model.eval()
+            #val_loss = self.score(x_val, y_val)
+            #val_losses.append(val_loss)
+
+            
+            if epoch % 20 == 19 or epoch==0:
                 print("epoch: {}, training loss: {}".format(epoch+1, training_loss))
-                print("epoch: {}, validation loss: {}".format(epoch+1, val_loss))
+                #print("epoch: {}, validation loss: {}".format(epoch+1, val_loss))
+                #print("epoch: {}, learning rate: {}".format(epoch+1, scheduler.get_last_lr()[0]))
                 print()
                 # pass
         
@@ -242,6 +254,7 @@ class Regressor():
         """
 
         x, _ = self._preprocessor(x, training = False) # Do not forget
+        # x = x.to(device)
         predictions = []
         for i, row in enumerate(x):
             prediction = self.model(row)
@@ -250,7 +263,31 @@ class Regressor():
         n = len(predictions)
         predictions = np.array(predictions).reshape(n,1)
         return predictions
+    
+    def get_params(self, deep=True):
+      params = {
+          "x": self.x,
+          "nb_epoch": self.nb_epoch,
+          "lr": self.learning_rate,
+          "bs": self.batch_size,
+          "neurons": self.neurons    
+      }
+      return params
+    
+    def set_params(self, **parameters):
+      return Regressor(self.x, **parameters)
+    
+    def mean_absolute_difference(self, x,y):
+        X, Y_gold = self._preprocessor(x, y = y, training = False) 
+        predictions = []
+        for i, row in enumerate(X):
+            prediction = self.model(row)
+            predictions.append(prediction.item())
 
+        n = len(predictions)
+        Ｙ＿predict = np.array(predictions).reshape(n,1)
+        error = (mean_absolute_error(Y_gold, Y_predict))
+        return error
 
     def score(self, x, y):
         """
@@ -267,6 +304,8 @@ class Regressor():
         """
 
         X, Y_gold = self._preprocessor(x, y = y, training = False) 
+        # X = X.to(device)
+        # Y_gold = Y_gold.to(device)
         predictions = []
         for i, row in enumerate(X):
             prediction = self.model(row)
@@ -275,8 +314,7 @@ class Regressor():
         n = len(predictions)
         Ｙ＿predict = np.array(predictions).reshape(n,1)
         rmse = np.sqrt(mean_squared_error(Y_gold, Y_predict))
-
-        return rmse 
+        return rmse # changed to negative for GridSearchCV. ACTION REQUIRED (change for submit)
     
 
     def r2_score(self, x, y):
@@ -305,7 +343,7 @@ class Regressor():
          
         return r2 
     
-"""
+
 def plot_learning_curve(training_errors, val_errors):
     assert(len(training_errors) == len(val_errors))
     plt.figure(figsize=(12,10))
@@ -318,7 +356,6 @@ def plot_learning_curve(training_errors, val_errors):
     plt.title("Training Curve")
     plt.show()
     return
-"""
 
 def save_regressor(trained_model): 
     """  Utility function to save the trained regressor model in part2_model.pickle.
@@ -341,7 +378,7 @@ def load_regressor():
     return trained_model
 
 
-def RegressorHyperParameterSearch(): 
+def RegressorHyperParameterSearch(x_train, y_train, config): 
     # Ensure to add whatever inputs you deem necessary to this function
     """
     Performs a hyper-parameter for fine-tuning the regressor implemented 
@@ -354,15 +391,11 @@ def RegressorHyperParameterSearch():
         The function should return your optimised hyper-parameters. 
 
     """
+    regressor = Regressor(x_train)
+    classifier = GridSearchCV(estimator = regressor, cv=5, param_grid = config, verbose=3, refit="neg_root_mean_squared_error", scoring=["neg_root_mean_squared_error", "r2"], return_train_score=True)
+    classifier.fit(x_train, y_train)
 
-    config = {
-        "lr": tune.choice(np.linspace(1e-3, 2e-1, 5)),
-        "batch_size": tune.choice([16, 32, 64]),
-        "neurons": [ i for i in range(np.random.randint())]
-    }
-
-
-    return  # Return the chosen hyper parameters
+    return classifier.cv_results
 
 
 
@@ -378,31 +411,45 @@ def example_main():
     # Splitting input and output
     x = data.loc[:, data.columns != output_label]
     y = data.loc[:, [output_label]]
+    x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=3, train_size=0.9, shuffle=True)
 
-    x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=104, train_size=0.9, shuffle=True)
+    # search space
+    config = {
+        "nb_epoch": [100,200,300],
+        "bs": [32],
+        "lr": [0.1],
+        "neurons": [[32], [16,32], [32,64], [16,32,64],
+                    [32,64,32], [32,64,96,16], [32,64,96,32]]
+    }
+
+    """ Grid Search Hyperparam tuning
+    grid_search_results = RegressorHyperParameterSearch(x_train, y_train, config)
+    results_df = pd.DataFrame(grid_search_results)
+    results_df.to_csv("grid_search_results.csv")
+    """
 
     # Hyperparameters
     epochs = 200
     learning_rate = 0.2
     batch_size = 64
-    hidden_neurons = [32,10]
-
- 
+    hidden_neurons = [32,64]
+    
     # regressor = Regressor(x)
     regressor = Regressor(x, nb_epoch=epochs, lr=learning_rate, bs=batch_size, neurons= hidden_neurons)
-
     regressor.fit(x_train, y_train)
-    save_regressor(regressor)
 
+    save_regressor(regressor)
     regressor = load_regressor()
     
     # Prediction on unseen test data
     rmse = regressor.score(x_test, y_test)
     r2_score = regressor.r2_score(x_test, y_test)
+    absolute_diff = regressor.mean_absolute_difference(x_test, y_test)
 
     # Error
     print("\nRegressor RMSE: {}\n".format(rmse))
     print("Regressor r2 score: {}\n".format(r2_score))
+    print("Mean Absolute Difference: {}\n".format(absolute_diff))
     print()
 
 
