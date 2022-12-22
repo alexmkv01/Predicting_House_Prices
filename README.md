@@ -47,7 +47,7 @@ We have performed a hyperparameter search to optimize the performance of our mod
 search over a pre-defined search space using **`GridSearchCV`** (a technique that exhaustively tries every combination of parameters with cross-validation).
 
 ## Evaluation ## 
-We have evaluated the performance of our model using root mean squared error (RMSE) r2 score, and mean absolute difference (MAD) metrics on the test data. 
+We have evaluated the performance of our model using root mean squared error (RMSE), r2 score, and mean absolute difference (MAD) metrics on the test data. Further information and justification is outlined in the report.
 
 ## Running the Code ## 
 Simply run the python file, making sure that the "housing.csv" file is in saved in the same local directory.
