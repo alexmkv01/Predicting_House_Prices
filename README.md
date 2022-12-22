@@ -53,7 +53,7 @@ We have evaluated the performance of our model using root mean squared error (RM
 Simply run the python file, making sure that the "housing.csv" file is in saved in the same local directory.
 
 ## Results ##
-The results of our experiments can be found in the report included in this repository. In our implementation, we were able to achieve an RMSE of ≈ 48,000, an r2 score of ≈ 0.82, which is approximately $32,000 absolute difference per prediction.
+The results of our experiments can be found in the report included in this repository. In our implementation, we were able to achieve an RMSE of ≈ 48,000, an r2 score of ≈ 0.82 on unseen test data, which is approximately $32,000 absolute difference per prediction.
 
 ## Report ##
 A report detailing our model, evaluation setup, hyperparameter tuning process, and final results can be found in the "house_prices_report.pdf" file included in this repository. The report length is 5 pages, including figures and tables. This coursework including code and report attained full marks!
