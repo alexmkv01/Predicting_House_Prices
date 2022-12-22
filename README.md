@@ -35,7 +35,7 @@ The California House Prices Dataset can be found in the "housing.csv" file. It c
 ## Neural Network Architecture ## 
 We have implemented a dynamic neural network architecture with parametric values for the number of hidden layers, neurons per layer, learning rate, batch size, and training epochs. The parameters were optimised in order to predict the median house value of a block group most accurately. The Regressor class includes the following methods:
 
-  - **`_preprocessor()`**: Preprocesses the input and output data. This includes handling Pandas DataFrames, storing parameters used for preprocessing, normalizing the input data, and encoding categorical data as 1-hot vectors.
+  - **`_preprocessor()`**: Preprocesses the input and output data. This includes handling missing / duplicated data entires, storing parameters used for preprocessing, normalizing the input data, and encoding categorical data as 1-hot vectors.
   - **`__init__()`**: Initializes the model and defines the layers of the neural network.
   - **`forward()`**: Defines the forward pass of the neural network.
   - **`fit()`**: Trains the model on the training data.
